@@ -2,13 +2,18 @@
 import argparse
 import csv
 import pprint
-#from bio import SeqIO
 import string
 from collections import defaultdict
- 
 import numpy as np
 from Bio import SeqIO
  
+extension_penalty = 0
+ 
+ 
+penalty_open = False
+ 
+ 
+# run for ex. with ./alignment.sh -l -s1 first_sequence.fasta -s2 second_sequence.fasta -e blosum50.csv -p 4
  
 def csv_dict_list(argument):
     reader = csv.DictReader(open(str(args.e), 'r'))
@@ -29,13 +34,23 @@ def find_max(x, y, my_table, seqencea, sequenceb, my_grid, penalty):
     A = int(my_table[x-1][y])-penalty
     B = int(my_table[x-1][y-1])+find
     C = int(my_table[x][y-1])-int(penalty)
+    #### EXTENSION PENALTY ADJUSTMENT
+    global penalty_open
+    if penalty_open:
+        A -= extension_penalty
+        A+= penalty
+        C -= extension_penalty
+        C+= penalty
  
- 
+    #########################
     if A >= B and A >= C:
+        penalty_open = True ##### extension penalty adjustment
         return A, 1
     if B >= A and B >= C:
+        penalty_open = False #### extension penalty adjusment
         return B, 2
     if C >= A and C >= B:
+        penalty_open = True #### extension penalty adjustment
         return C, 3
     #if A >= B and A >= C:
       #  return A, 1
@@ -67,7 +82,7 @@ def my_global(penalisation, seqencea, sequenceb, matrix):
  
     for i in range(len(sequenceb)):
         second.append(sequenceb[i])
- 
+######
     my_table = [[0 for i in range(len(seqencea)+1)] for j in range(len(sequenceb) + 1)]
     trackback = [[0 for i in range(len(seqencea)+1)] for j in range(len(sequenceb) + 1)]
  
@@ -138,17 +153,16 @@ def my_global(penalisation, seqencea, sequenceb, matrix):
         if x == 0 and y == 0:
             break
  
-    for i in range(1, 6):
-        for y in range(1, 10):
-            print(trackback[i][y], ', ')
-        print('\n')
+    #for i in range(1, 6):
+    #    for y in range(1, 10):
+    #        print(trackback[i][y], ', ')
+    #    print('\n')
  
     # print(np.matrix(my_table))
     #print(trackback)
     besta.reverse()
     bestb.reverse()
     print(''.join(besta))
-    print('and')
     print(''.join(bestb))
     print(finish)
  
@@ -156,23 +170,39 @@ def my_global(penalisation, seqencea, sequenceb, matrix):
  
  
 def find_local_max(x, y, my_table, seqencea, sequenceb, my_grid, penalty):
+    #rint("the grid is:")
+    #pprint.pprint(my_grid)
  
     find = find_me(my_grid, seqencea[x-1], sequenceb[y-1])
-    A = int(my_table[x-1][y])-penalty
+    A = int(my_table[x-1][y])-int(penalty)
     B = int(my_table[x-1][y-1])+find
     C = int(my_table[x][y-1])-int(penalty)
     D = 0
+ 
+    #### EXTENSION PENALTY ADJUSTMENT
+    global penalty_open
+    if penalty_open:
+        A -= extension_penalty
+        A +=penalty_open
+        C -= extension_penalty
+        C+=penalty
+ 
+    ##########END OF EXTENSION PENALTY ADJUSTMENT BLOCK ###############
     if A >= B and A >= C and A >= D:
+        penalty_open = True # extension penalty adjustment
         return A, 1
-    elif B >= A and B >= C and B >= 0:
+    elif B >= A and B >= C and B >= D:
+        penalty_open = False # extension penalty adjustment
         return B, 2
     elif D >= A and D >= B and D >= C:
         return D, -1
     else:
+        penalty_open = True # extension penalty adjustment
         return C, 3
  
  
 def my_local(penalisation, seqencea, sequenceb, matrix):
+ 
  
     first = []
     second = []
@@ -187,20 +217,21 @@ def my_local(penalisation, seqencea, sequenceb, matrix):
     # I create a table where Im going to fill alignment scores
     my_table = [[0 for i in range(len(seqencea)+1)] for j in range(len(sequenceb) + 1)]
     trackback = [[0 for i in range(len(seqencea)+1)] for j in range(len(sequenceb) + 1)]
- 
+    #### here it starts
     # first row and column are zeros
     my_table[0][0] = 0
     for i in range(1, len(seqencea)+1):
         my_table[0][i] = my_table[0][i-1]
     for i in range(1, len(sequenceb)+1):
         my_table[i][0] = my_table[i-1][0]
- 
+    #print("Sequencea:\n",seqencea, '\nSeqiemceb:\n',sequenceb, '\n')
+    #pprint.pprint(my_table)
  
     minimum = -999999999999999999
     a = 0
     b = 0
     for x in range(1, len(sequenceb) + 1):
-        for y in range(1, len(seqencea)+1):
+        for y in range(1, len(seqencea)+1): # spravne prochazeni table
             table_result, trackback[x][y] = find_local_max(x, y, my_table, sequenceb, seqencea, matrix, penalisation)
             my_table[x][y] = str(table_result)
             if int(my_table[x][y]) > minimum:
@@ -209,9 +240,73 @@ def my_local(penalisation, seqencea, sequenceb, matrix):
                 b = y
  
     ###############
-    # pprint.pprint(np.matrix(my_table))
+    #print('\n')
+    #pprint.pprint(my_table)
+    #pprint.pprint(trackback)
+ 
+ 
     first_sequence = []
     second_sequence = []
+    result = int(my_table[a][b])
+    ######## ALTERED VERSION #################
+    origin_x = a
+    origin_y = b
+    #print("a:", origin_x, "y:", origin_y)
+    left_shift = False
+    right_shift = False
+    print("trackback:")
+    pprint.pprint(trackback)
+    while True:
+        #print('position:', origin_x, origin_y)
+        print("x:", origin_x, "y:", origin_y)
+        if left_shift and right_shift:
+            print("SOMETHING's WRONG")
+        if my_table[origin_x][origin_y] == 0:
+            break
+        if left_shift:
+            left_shift = False
+            first_sequence.append(seqencea[origin_y - 1])
+            tmp = second_sequence[-1]
+            second_sequence[-1] = '-'
+            second_sequence.append(tmp)
+        elif right_shift:
+            right_shift = False
+            tmp = first_sequence[-1]
+            first_sequence[-1] = '-'
+            first_sequence.append(tmp)
+            second_sequence.append(sequenceb[origin_x - 1])
+        else:
+            first_sequence.append(seqencea[origin_y - 1])
+            second_sequence.append(sequenceb[origin_x - 1])  # adding the last value of the sequence
+ 
+        if trackback[origin_x][origin_y] == 3: #left
+            origin_y = origin_y-1
+            left_shift = True
+        elif trackback[origin_x][origin_y] == 2: #across
+            origin_x = origin_x-1
+            origin_y = origin_y-1
+        elif trackback[origin_x][origin_y] == 1: #up
+            origin_x = origin_x-1
+            right_shift = True
+ 
+    reversed_a = first_sequence.reverse()
+    reversed_b = second_sequence.reverse()
+    seqa = ''.join(first_sequence)
+    seqb = ''.join(second_sequence)
+ 
+    print(seqa)
+    print(seqb)
+    print(result)
+ 
+    return
+    ###########################################
+ 
+ 
+ 
+ 
+ 
+ 
+ 
     besta = []
     bestb = []
     first_sequence.append(seqencea[b-1])
@@ -274,7 +369,9 @@ if __name__ == '__main__':
     parser.add_argument("-s2", help="path to second sequence")
     parser.add_argument("-e", help="path to the score matrix in CSV format follows")
     parser.add_argument("-p", help="gap penalization")
-    parser.add_argument('-pe', help="gap_extension_penalisation", action='store_true')
+    parser.add_argument("-pe", help="gap_extension_penalisation")
+ 
+ 
  
     args = parser.parse_args()
     # extracting ranking table
@@ -288,7 +385,8 @@ if __name__ == '__main__':
             row = next(matrixReader)
             for j in range(1, len(names)):
                 my_matrix[(row[0], names[j])] = int(row[j])
- 
+    #print("the matrix:")
+    #pprint.pprint(my_matrix)
     csv_dictionary = csv_dict_list(args.e)
  
     ##### PARSING FROM FASTA #####
@@ -296,11 +394,8 @@ if __name__ == '__main__':
         seq1 = s1.seq
     for s2 in SeqIO.parse(str(args.s2), "fasta"):
         seq2 = s2.seq
-    print('shut the heck up')
-    print(seq1)
-    print('insufferable pain')
-    print(seq2)
-    print('done')
+    #print(seq1)
+    #print(seq2)
  
     ######################################
     seq1st_examplea = 'HEAGAWGHEE'#"CGTCCAAGTG"# #PEKREMTECHLSDEEIRKLNRDLRILIATNGTLTRILNVLANDEIVVEIVKQQIQDAAPEMDGCDHSSIGRVLRRDIVLKGRRSGIPFVAAESFIAIDLLPPEIVASLLETHRPIGEVMAASCIETFKEEAKVWAGESPAWLELDRRRNLPPKVVGRQYRVIAEGRPVIIITEYFLRSVFEDNSREEPIRHQRSVGTSARSGRSICT"
@@ -314,6 +409,8 @@ if __name__ == '__main__':
     #print('sesesd')
     #print(seq2)
     #print('leggo')
+    if args.pe:
+        extension_penalty+=int(args.pe)
     if args.l:
         my_local(int(args.p), seq1, seq2, my_matrix)
     elif args.g:
